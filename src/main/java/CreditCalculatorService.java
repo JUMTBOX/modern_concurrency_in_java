@@ -2,10 +2,12 @@ import java.util.List;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicReference;
+import reactor.core.publisher.Mono;
 import records.Asset;
 import records.Credit;
 import records.Liability;
 import records.Person;
+import static java.util.concurrent.CompletableFuture.*;
 
 
 public class CreditCalculatorService {
@@ -67,6 +69,51 @@ public class CreditCalculatorService {
 
      return calculateCredits(assetsFuture.get(), liabilities.get());
     }
+  }
+
+  /**
+   * 1. 독립적인 작업을 비동기로 시작
+   * 2. `importantWork()` 수행이 완료된 후에 person 데이터를 비동기로 가져온다.
+   * 3. person 데이터를 사용해서 `getAssets()`와 `getLiabilities()`를 비동기로 병렬 실행한다.
+   * 4. assets 데이터와 liabilities 데이터를 사용해서 신용 점수를 계산한다.
+   * 5. 스레드 실행을 막고 신용 점수 계산 결과를 기다린 후 완료되면 반환한다.
+   * */
+  public Credit calculateCreditWithCompletableFuture(Long personId) throws ExecutionException, InterruptedException {
+    return runAsync(this::importantWork)
+        .thenCompose(aVoid -> supplyAsync(() -> getPerson(personId)))
+        .thenCompose(person -> supplyAsync(() -> getAssets(person))
+            .thenCombineAsync(
+                supplyAsync(() -> getLiabilities(person)),
+                this::calculateCredits
+            )
+        )
+        .get();
+  }
+
+  /**
+   * 1. `importantWork()`를 비동기로 실행하는 Mono 객체를 생성한다.
+   * 2. 리액티브 스트림 안에서 person 데이터 조회 로직을 감싼다.
+   * 3. 비동기 assets 데이터 조회 로직을 적용해서 person 스트림을 assets 스트림으로 변환한다.
+   * 4. 비동기 liabilities 데이터 조회 로직을 적용해서 person 스트림을 liabilities 스트림으로 변환한다.
+   * 5. `importantWork()`가 완료된 후에 신용 점수 계산 작업을 시작한다.
+   * 6. assets 스트림과 liabilities 스트림을 하나의 스트림으로 결합한다.
+   * 7. 결합된 스트림에서 assets 데이터와 liabilities 데이터를 획득해서 최종 신용 점수를 계산한다.
+   * */
+  public Mono<Credit> calculateCreditReactive(Long personId) {
+    Mono<Void> importantWorkMono = Mono.fromRunnable(this::importantWork);
+    Mono<Person> personMono = Mono.fromSupplier(() -> getPerson(personId));
+
+    Mono<List<Asset>> assetsMono = personMono.map(this::getAssets);
+    Mono<List<Liability>> liabilitiesMono = personMono.map(this::getLiabilities);
+
+    return importantWorkMono.then(
+        Mono.zip(assetsMono, liabilitiesMono)
+            .map(tuple -> {
+              var assets = tuple.getT1();
+              var liabilities = tuple.getT2();
+              return calculateCredits(assets, liabilities);
+            })
+    );
   }
 
   private Person getPerson (Long personId) {
