@@ -52,6 +52,11 @@ public class CreditCalculatorService {
     return credit;
   }
 
+  /**
+   * [ExecutorService]
+   * 위의 unbounded 메서드 방식과 성능상으로 유의미한 차이는 없지만 <br/>
+   * 스레드 생성 및 관리, 적절한 작업 부하에 대한 실행 속도 상승을 편리하게 해준다.
+   * */
   public Credit calculateCreditWithExecutor(Long personId) throws ExecutionException, InterruptedException {
     try(var executor = Executors.newFixedThreadPool(5)) {
      var person = getPerson(personId);
