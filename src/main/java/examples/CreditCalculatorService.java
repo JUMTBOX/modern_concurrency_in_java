@@ -1,6 +1,7 @@
 package examples;
 
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicReference;
@@ -9,7 +10,6 @@ import records.Asset;
 import records.Credit;
 import records.Liability;
 import records.Person;
-import static java.util.concurrent.CompletableFuture.*;
 
 
 public class CreditCalculatorService {
@@ -81,11 +81,11 @@ public class CreditCalculatorService {
    * 5. 스레드 실행을 막고 신용 점수 계산 결과를 기다린 후 완료되면 반환한다.
    * */
   public Credit calculateCreditWithCompletableFuture(Long personId) throws ExecutionException, InterruptedException {
-    return runAsync(this::importantWork)
-        .thenCompose(aVoid -> supplyAsync(() -> getPerson(personId)))
-        .thenCompose(person -> supplyAsync(() -> getAssets(person))
+    return CompletableFuture.runAsync(this::importantWork)
+        .thenCompose(aVoid -> CompletableFuture.supplyAsync(() -> getPerson(personId)))
+        .thenCompose(person -> CompletableFuture.supplyAsync(() -> getAssets(person))
             .thenCombineAsync(
-                supplyAsync(() -> getLiabilities(person)),
+                CompletableFuture.supplyAsync(() -> getLiabilities(person)),
                 this::calculateCredits
             )
         )
